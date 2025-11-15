@@ -1,0 +1,224 @@
+# src/retrieval/hipporag_retriever.py
+"""
+HippoRAG Knowledge Graph Retriever
+Sử dụng HippoRAG API để retrieve documents với knowledge graph
+"""
+
+import os
+import sys
+from typing import List, Dict, Any
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain.schema import Document
+from pydantic import Field
+import re
+
+# Add notebooks directory to path để import HippoRAG
+notebooks_path = os.path.join(os.path.dirname(__file__), '..', '..', 'notebooks')
+sys.path.insert(0, notebooks_path)
+
+from hipporag import HippoRAG
+from config import settings
+
+# Mapping các văn bản có lỗi font encoding
+DOCUMENT_MAPPING = {
+    "Ngh nh 168-2024-N-CP": "Nghị định 168/2024/NĐ-CP",
+    "Ngh nh 03-2021-N-CP": "Nghị định 03/2021/NĐ-CP", 
+    "Ngh nh 100-2019-N-CP": "Nghị định 100/2019/NĐ-CP",
+    "Ngh nh 123-2021-N-CP": "Nghị định 123/2021/NĐ-CP",
+    "Lu t 35-2024-QH15": "Luật 35/2024/QH15",
+    "Lu t 36-2024-QH15": "Luật 36/2024/QH15",
+}
+
+class HippoRAGRetriever(BaseRetriever):
+    """
+    HippoRAG-based retriever sử dụng knowledge graph
+    
+    Flow:
+    1. Initialize HippoRAG với OpenAI GPT-4o-mini
+    2. Use hipporag.rag_qa(queries) để retrieve + answer
+    3. Extract citations từ QuerySolution results
+    4. Format thành LangChain Documents
+    """
+    
+    hipporag: Any = Field(default=None, description="HippoRAG instance")
+    max_docs_per_query: int = Field(default=3, description="Max documents per query")
+    
+    def __init__(self, max_docs_per_query: int = 3, **kwargs):
+        """Initialize HippoRAG retriever"""
+        
+        # Load OpenAI API key từ settings hoặc environment
+        openai_api_key = getattr(settings, 'OPENAI_API_KEY', None) or os.getenv('OPENAI_API_KEY')
+        
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY not found in settings or environment variables")
+        
+        os.environ["OPENAI_API_KEY"] = openai_api_key
+        
+        # Initialize HippoRAG
+        print("🧠 Initializing HippoRAG Knowledge Graph...")
+        hipporag_instance = HippoRAG(
+            save_dir="outputs",
+            llm_model_name="gpt-4o-mini",
+            llm_base_url="https://api.openai.com/v1",
+            embedding_model_name="text-embedding-3-small",
+            embedding_base_url="https://api.openai.com/v1"
+        )
+        
+        super().__init__(
+            hipporag=hipporag_instance,
+            max_docs_per_query=max_docs_per_query,
+            **kwargs
+        )
+        
+        print("✅ HippoRAG Retriever initialized successfully")
+    
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """Required method from BaseRetriever"""
+        return self._hipporag_search(query)
+    
+    def _hipporag_search(self, query: str) -> List[Document]:
+        """
+        Sử dụng HippoRAG để search với knowledge graph
+        
+        Returns:
+            List[Document]: Documents với enhanced citations
+        """
+        try:
+            print(f"🧠 HippoRAG searching for: {query}")
+            
+            # Call HippoRAG API
+            queries = [query]
+            rag_results = self.hipporag.rag_qa(queries=queries)
+            
+            if not rag_results or not rag_results[0]:
+                print("⚠️ No results from HippoRAG")
+                return []
+            
+            documents = []
+            query_solution = rag_results[0][0]  # First query's first solution
+            
+            # Extract answer
+            answer = query_solution.answer
+            
+            # Process each document trong results
+            for doc_idx, doc_text in enumerate(query_solution.docs[:self.max_docs_per_query]):
+                # Parse citation từ document title
+                citation_info = self._parse_citation(doc_text)
+                
+                # Create metadata
+                metadata = {
+                    "_source": "hipporag",
+                    "_query": query,
+                    "_answer": answer,
+                    "legal_citation": citation_info["formatted_citation"],
+                    "law_id": citation_info["law_id"],
+                    "article_id": citation_info["article_id"],
+                    "clause_id": citation_info.get("clause_id"),
+                    "has_legal_citation": True,
+                    "_retrieval_method": "hipporag_knowledge_graph"
+                }
+                
+                # Clean document content (remove citation header)
+                clean_content = self._clean_document(doc_text)
+                
+                # Create Document
+                doc = Document(
+                    page_content=clean_content,
+                    metadata=metadata
+                )
+                documents.append(doc)
+                
+                print(f"📄 HippoRAG Doc {doc_idx+1}: {citation_info['formatted_citation']}")
+            
+            print(f"✅ HippoRAG retrieved {len(documents)} documents")
+            return documents
+            
+        except Exception as e:
+            print(f"❌ HippoRAG search failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _parse_citation(self, doc_text: str) -> Dict[str, Any]:
+        """
+        Parse citation từ document text
+        
+        Format: [Nghị định 168-2024-NĐ-CP] Điều 32 Mục 16
+        """
+        citation_info = {
+            "law_id": None,
+            "article_id": None,
+            "clause_id": None,
+            "formatted_citation": "Không xác định nguồn"
+        }
+        
+        try:
+            # Extract title line (first line)
+            lines = doc_text.split('\n')
+            if not lines:
+                return citation_info
+            
+            title_line = lines[0].strip()
+            
+            # Parse law ID từ brackets [...]
+            law_match = re.search(r'\[(.*?)\]', title_line)
+            if law_match:
+                law_id_raw = law_match.group(1)
+                # Fix encoding issues
+                law_id = DOCUMENT_MAPPING.get(law_id_raw, law_id_raw)
+                citation_info["law_id"] = law_id
+            
+            # Parse article (Điều X)
+            article_match = re.search(r'Điều\s+(\d+)', title_line)
+            if article_match:
+                citation_info["article_id"] = article_match.group(1)
+            
+            # Parse clause (Mục/Khoản X)
+            clause_match = re.search(r'(?:Mục|Khoản)\s+(\d+)', title_line)
+            if clause_match:
+                citation_info["clause_id"] = clause_match.group(1)
+            
+            # Build formatted citation
+            parts = []
+            if citation_info["law_id"]:
+                parts.append(citation_info["law_id"])
+            if citation_info["article_id"]:
+                parts.append(f"Điều {citation_info['article_id']}")
+            if citation_info["clause_id"]:
+                parts.append(f"Khoản {citation_info['clause_id']}")
+            
+            if parts:
+                citation_info["formatted_citation"] = ", ".join(parts)
+            
+        except Exception as e:
+            print(f"⚠️ Citation parsing failed: {e}")
+        
+        return citation_info
+    
+    def _clean_document(self, doc_text: str) -> str:
+        """Remove citation header và clean document"""
+        lines = doc_text.split('\n')
+        
+        # Remove first line (citation header)
+        if lines and re.match(r'\[.*?\]', lines[0]):
+            lines = lines[1:]
+        
+        # Join and clean
+        cleaned = '\n'.join(lines).strip()
+        return cleaned
+
+
+def get_hipporag_retriever(max_docs_per_query: int = 3) -> HippoRAGRetriever:
+    """
+    Factory function để tạo HippoRAG retriever
+    
+    Args:
+        max_docs_per_query: Số documents tối đa cho mỗi query
+    
+    Returns:
+        HippoRAGRetriever instance
+    """
+    return HippoRAGRetriever(max_docs_per_query=max_docs_per_query)
