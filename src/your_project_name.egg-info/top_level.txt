@@ -4,6 +4,7 @@ chatbot_core
 debug_utils
 generation
 guardrails
+ingestion
 memory
 persona
 retrieval

@@ -166,6 +166,7 @@ Requires-Dist: pydantic-settings
 Requires-Dist: pydantic_core
 Requires-Dist: pydeck
 Requires-Dist: Pygments
+Requires-Dist: pytest>=9.0.1
 Requires-Dist: python-dateutil
 Requires-Dist: python-dotenv
 Requires-Dist: python-igraph

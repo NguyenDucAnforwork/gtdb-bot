@@ -171,6 +171,7 @@ dependencies = [
     "pydantic_core",
     "pydeck",
     "Pygments",
+    "pytest>=9.0.1",
     "python-dateutil",
     "python-dotenv",
     "python-igraph",

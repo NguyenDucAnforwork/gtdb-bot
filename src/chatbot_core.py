@@ -192,6 +192,22 @@ Trả lời ngắn gọn, phù hợp với vai trò."""
         return RunnableLambda(persona_greeting)
     
     def _build_simple_legal_chain(self):
+        simple_legal_prompt = ChatPromptTemplate.from_template(
+            """Bạn là chuyên gia luật giao thông Việt Nam. Trả lời CHÍNH XÁC dựa trên thông tin có sẵn.
+            
+THÔNG TIN:
+{context}
+            
+CÂU HỎI: {question}
+            
+HÃY TRẢ LỜI:
+- Nếu thông tin đủ: Đưa ra câu trả lời CỤ THỂ và RÕ RÀNG (số tiền phạt, tốc độ, v.v.)
+- Nếu cần TÍNH TOÁN (như "tổng cộng"): Hãy TÍNH TOÁN và đưa ra kết quả cụ thể
+- Trích dẫn nguồn pháp lý nếu có (Nghị định, Điều, Khoản)
+- Giọng như cuộc trò chuyện tự nhiên, NGẮN GỌN
+
+LƯU Ý: Nếu thông tin KHÔNG đủ, hãy nói thẳng "Tôi không tìm thấy thông tin cụ thể về {question} trong cơ sở dữ liệu."""
+        )
         """Build chain with MEMORY as FIRST priority retriever and persona support."""
         def get_persona_prompt(persona_key: str) -> ChatPromptTemplate:
             # Use get_chat_prompt_template from prompts.py
@@ -209,112 +225,118 @@ Trả lời ngắn gọn, phù hợp với vai trò."""
             chain = prompt_template | self.llm | StrOutputParser()
             return chain.invoke({"context": context, "question": question})
         
-        def smart_retrieval_with_memory_first(inputs):
-            """MEMORY FIRST retrieval strategy with strict validation."""
-            question = inputs["question"]
-            user_id = inputs.get("user_id", "")
+#         def smart_retrieval_with_memory_first(inputs):
+#             """MEMORY FIRST retrieval strategy with strict validation."""
+#             question = inputs["question"]
+#             user_id = inputs.get("user_id", "")
             
-            # ✅ STEP 0: Try MEMORY FIRST (highest priority)
-            if user_id:
-                print("🧠 Checking if MEMORY can answer the question...")
+#             # ✅ STEP 0: Try MEMORY FIRST (highest priority)
+#             if user_id:
+#                 print("🧠 Checking if MEMORY can answer the question...")
                 
-                try:
-                    memory_context = self.memory_manager.get_context(user_id, limit=5)
+#                 try:
+#                     memory_context = self.memory_manager.get_context(user_id, limit=5)
                     
-                    if memory_context and memory_context.strip():
-                        # Use memory manager's validator
-                        is_sufficient = self.memory_manager.validate_memory_sufficiency(
-                            memory_context, question
-                        )
+#                     if memory_context and memory_context.strip():
+#                         # Use memory manager's validator
+#                         is_sufficient = self.memory_manager.validate_memory_sufficiency(
+#                             memory_context, question
+#                         )
                         
-                        if is_sufficient:
-                            print("✅ MEMORY has sufficient information! Using memory directly.")
+#                         if is_sufficient:
+#                             print("✅ MEMORY has sufficient information! Using memory directly.")
                             
-                            # Generate answer from memory using LLM
-                            memory_answer_prompt = ChatPromptTemplate.from_template(
-                                """Dựa vào NGỮ CẢNH CUỘC TRÒ CHUYỆN dưới đây, hãy trả lời câu hỏi một cách TỰ NHIÊN và CỤ THỂ.
+#                             # Generate answer from memory using LLM
+#                             memory_answer_prompt = ChatPromptTemplate.from_template(
+#                                 """Dựa vào NGỮ CẢNH CUỘC TRÒ CHUYỆN dưới đây, hãy trả lời câu hỏi một cách TỰ NHIÊN và CỤ THỂ.
 
-NGỮ CẢNH:
-{memory_context}
+# NGỮ CẢNH:
+# {memory_context}
 
-CÂU HỎI: {question}
+# CÂU HỎI: {question}
 
-YÊU CẦU:
-- Nếu cần TÍNH TOÁN (như "tổng cộng"), hãy TÍNH và đưa ra KẾT QUẢ CỤ THỂ
-- Trả lời NGẮN GỌN, giọng điệu TỰ NHIÊN như đang trò chuyện
-- KHÔNG cần trích dẫn nguồn vì đây là thông tin từ cuộc trò chuyện trước
-- CHỈ trả lời dựa trên thông tin có trong ngữ cảnh
+# YÊU CẦU:
+# - Nếu cần TÍNH TOÁN (như "tổng cộng"), hãy TÍNH và đưa ra KẾT QUẢ CỤ THỂ
+# - Trả lời NGẮN GỌN, giọng điệu TỰ NHIÊN như đang trò chuyện
+# - KHÔNG cần trích dẫn nguồn vì đây là thông tin từ cuộc trò chuyện trước
+# - CHỈ trả lời dựa trên thông tin có trong ngữ cảnh
 
-TRẢ LỜI:"""
-                            )
+# TRẢ LỜI:"""
+#                             )
                             
-                            answer_chain = memory_answer_prompt | self.llm | StrOutputParser()
-                            memory_answer = answer_chain.invoke({
-                                "memory_context": memory_context,
-                                "question": question
-                            })
+#                             answer_chain = memory_answer_prompt | self.llm | StrOutputParser()
+#                             memory_answer = answer_chain.invoke({
+#                                 "memory_context": memory_context,
+#                                 "question": question
+#                             })
                             
-                            return f"[Từ cuộc trò chuyện trước]\n{memory_answer}"
-                        else:
-                            print("⚠️ MEMORY validation failed - information insufficient or irrelevant")
-                    else:
-                        print("ℹ️ No memory context available")
+#                             return f"[Từ cuộc trò chuyện trước]\n{memory_answer}"
+#                         else:
+#                             print("⚠️ MEMORY validation failed - information insufficient or irrelevant")
+#                     else:
+#                         print("ℹ️ No memory context available")
                         
-                except Exception as e:
-                    print(f"❌ Memory retrieval error: {e}")
-            else:
-                print("ℹ️ No user_id provided, skipping memory retrieval")
+#                 except Exception as e:
+#                     print(f"❌ Memory retrieval error: {e}")
+#             else:
+#                 print("ℹ️ No user_id provided, skipping memory retrieval")
             
-            # Helper function to check if response is insufficient
-            def is_insufficient_response(response_text):
-                insufficient_indicators = [
-                    "không thể xác định", "không có thông tin", "không tìm thấy",
-                    "dựa trên tài liệu", "do không có thông tin trong tài liệu",
-                    "tôi không thể trích dẫn", "không thể nêu rõ", "không có điều khoản", "rất tiếc",
-                    "bạn cần tham khảo", "không đề cập", "thông tin bạn cung cấp không",
-                    "các văn bản quy phạm pháp luật khác", "chỉ quy định chung"
-                ]
-                response_lower = response_text.lower()
+#             # Helper function to check if response is insufficient
+#             def is_insufficient_response(response_text):
+#                 insufficient_indicators = [
+#                     "không thể xác định", "không có thông tin", "không tìm thấy",
+#                     "dựa trên tài liệu", "do không có thông tin trong tài liệu",
+#                     "tôi không thể trích dẫn", "không thể nêu rõ", "không có điều khoản", "rất tiếc",
+#                     "bạn cần tham khảo", "không đề cập", "thông tin bạn cung cấp không",
+#                     "các văn bản quy phạm pháp luật khác", "chỉ quy định chung"
+#                 ]
+#                 response_lower = response_text.lower()
                 
-                has_indicator = any(indicator in response_lower for indicator in insufficient_indicators)
-                has_specific_info = any(char.isdigit() for char in response_text)
+#                 has_indicator = any(indicator in response_lower for indicator in insufficient_indicators)
+#                 has_specific_info = any(char.isdigit() for char in response_text)
                 
-                return has_indicator or not has_specific_info
+#                 return has_indicator or not has_specific_info
             
-            # ✅ STEP 1: Try Vector retriever
-            try:
-                query_transformer = create_query_transformer(self.vector_retriever, self.llm)
-                reranker = create_reranker(query_transformer)
-                vector_docs = reranker.invoke(question)
+#             # ✅ STEP 1: Try Vector retriever
+#             try:
+#                 query_transformer = create_query_transformer(self.vector_retriever, self.llm)
+#                 reranker = create_reranker(query_transformer)
+#                 vector_docs = reranker.invoke(question)
                 
-                if vector_docs and len(vector_docs) > 0:
-                    print("📚 Trying vector retriever")
-                    vector_context = []
-                    for doc in vector_docs[:3]:
-                        content = doc.page_content
-                        metadata = doc.metadata
-                        citation = format_qdrant_citation(metadata)
-                        vector_context.append(f"{content}\n[Nguồn: {citation}]")
+#                 if vector_docs and len(vector_docs) > 0:
+#                     print("📚 Trying vector retriever")
+#                     vector_context = []
+#                     for doc in vector_docs[:3]:
+#                         content = doc.page_content
+#                         metadata = doc.metadata
+#                         citation = format_qdrant_citation(metadata)
+#                         vector_context.append(f"{content}\n[Nguồn: {citation}]")
                     
-                    return "\n\n".join(vector_context)
-            except Exception as e:
-                print(f"❌ Vector retriever error: {e}")
+#                     return "\n\n".join(vector_context)
+                
+#                 # check if vector_context is sufficient
+#                 vector_formatted = "\n\n".join(vector_context)
+#                 test_response = self.llm.invoke(
+#                     simple_legal_prompt.format(context=vector_formatted, question=question)
+#                 )
+#             except Exception as e:
+#                 print(f"❌ Vector retriever error: {e}")
             
-            return "Xin lỗi, không tìm thấy thông tin chính xác về câu hỏi này."
+#             return "Xin lỗi, không tìm thấy thông tin chính xác về câu hỏi này."
         
-        return (
-            {
-                "question": itemgetter("question"),
-                "user_id": itemgetter("user_id"),
-                "context": RunnableLambda(smart_retrieval_with_memory_first)
-            }
-            | RunnableLambda(lambda inputs: {
-                "context": inputs["context"],
-                "question": inputs["question"],
-                "persona_key": inputs.get("persona_key", "default")
-            })
-            | RunnableLambda(persona_legal_response)
-        )
+#         return (
+#             {
+#                 "question": itemgetter("question"),
+#                 "user_id": itemgetter("user_id"),
+#                 "context": RunnableLambda(smart_retrieval_with_memory_first)
+#             }
+#             | RunnableLambda(lambda inputs: {
+#                 "context": inputs["context"],
+#                 "question": inputs["question"],
+#                 "persona_key": inputs.get("persona_key", "default")
+#             })
+#             | RunnableLambda(persona_legal_response)
+#         )
         
         def smart_retrieval_with_memory_first(inputs):
             """MEMORY FIRST retrieval strategy with strict validation."""
@@ -577,11 +599,43 @@ Hãy:
         
         return RunnableLambda(web_search_and_format) | web_prompt | self.llm | StrOutputParser()
     
-    def process_query(self, question: str, user_id: str = None, persona_key: str = "default"):
+    def process_query(self, question: str, user_id: str = None, persona_key: str = "default", force_hipporag: bool = False):
         """Enhanced query processing with MEMORY and CSGT commands support."""
-        print(f"🟢 process_query: {question=}, {user_id=}, {persona_key=}")
+        print(f"🟢 process_query: {question=}, {user_id=}, {persona_key=}, {force_hipporag=}")
         
         try:
+            # Step 0: Auto-enable HippoRAG for hipporag persona
+            if persona_key == "hipporag":
+                force_hipporag = True
+                print("🦄 HippoRAG persona detected - automatically enabling force_hipporag=True")
+            
+            # Step 0: Force HippoRAG mode - bypass everything else, only use HippoRAG
+            if force_hipporag:
+                print("🎯 Force HippoRAG mode - using HippoRAG retriever only, no vector search")
+                
+                # Get documents from HippoRAG only
+                hipporag_docs = self.hipporag_retriever.invoke(question)
+                
+                # Format HippoRAG results
+                if hipporag_docs:
+                    formatted_context = "\n\n".join([
+                        f"📄 Tài liệu {i+1}: {format_qdrant_citation(doc.metadata)}\n{doc.page_content}"
+                        for i, doc in enumerate(hipporag_docs)
+                    ])
+                else:
+                    formatted_context = "Không tìm thấy tài liệu phù hợp."
+                
+                # Use default persona prompt for HippoRAG-only response
+                prompt_template = get_chat_prompt_template("default")
+                chain = prompt_template | self.llm | StrOutputParser()
+                
+                response = chain.invoke({
+                    "question": question,
+                    "context": formatted_context
+                })
+                
+                return response
+            
             # Step 1: Check for CSGT special commands first
             if persona_key == "csgt" and question.strip().startswith("/"):
                 return self._handle_csgt_commands(question.strip(), user_id)

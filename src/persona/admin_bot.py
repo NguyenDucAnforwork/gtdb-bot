@@ -340,6 +340,11 @@ Hiệu lực: Từ 01/01/2024
 • /admin approve <file> - Duyệt văn bản
 • /admin reject <file> [lý do] - Từ chối văn bản
 
+🌐 INDEX TỪ WEB (AC1 - NEW):
+• /index <url> - Crawl & index văn bản từ URL
+  VD: /index https://thuvienphapluat.vn/van-ban/.../Nghi-dinh-158-2024-ND-CP-...
+  → Tự động crawl, split, index vào Qdrant + HippoRAG
+
 🔄 PHIÊN BẢN & HIỆU LỰC (US2/AC2):
 • /admin diff <tên> <v1> <v2> - So sánh 2 phiên bản
 • /admin status <tên> <trạng thái> - Cập nhật hiệu lực
@@ -347,7 +352,7 @@ Hiệu lực: Từ 01/01/2024
 
 📊 COVERAGE & INDEXING (AC1/AC3):
 • /admin coverage - Kiểm tra coverage ≥95%
-• /admin index <file> - Index 1 văn bản
+• /admin index <file> - Index 1 văn bản từ file
 • /admin index-all - Index tất cả đã duyệt
 
 📈 GIÁM SÁT:
@@ -359,3 +364,84 @@ Hiệu lực: Từ 01/01/2024
 - Mọi thao tác được log lại
 - SLA: Index ≤7 ngày (AC1)
 - Target: Coverage ≥95% (AC3)"""
+    
+    def index_from_url(self, url: str) -> str:
+        """
+        AC1: Crawl văn bản từ URL và index vào KG/VecStore
+        
+        Flow:
+        1. Crawl content từ URL (thuvienphapluat.vn)
+        2. Split passages theo Điều/Khoản
+        3. Index vào Qdrant (vector search)
+        4. Index vào HippoRAG (knowledge graph)
+        5. Update coverage stats
+        
+        Args:
+            url: URL văn bản trên thuvienphapluat.vn
+            
+        Returns:
+            Status message
+        """
+        try:
+            from src.ingestion.crawler import crawl_document
+            from src.ingestion.updater import split_passages, update_qdrant, update_hipporag
+            
+            print(f"🚀 Bắt đầu index từ URL: {url}")
+            
+            # Step 1: Crawl content
+            doc_data = crawl_document(url)
+            if not doc_data:
+                return "❌ Không thể crawl văn bản từ URL. Kiểm tra lại URL hoặc kết nối mạng."
+            
+            law_code = doc_data['law_code']
+            title = doc_data['title']
+            content = doc_data['content']
+            
+            # Step 2: Split passages
+            print(f"📄 Đang phân tích văn bản: {law_code} - {title}")
+            chunks = split_passages(content, law_code=law_code)
+            
+            if not chunks:
+                return f"❌ Không tìm thấy nội dung hợp lệ trong văn bản {law_code}"
+            
+            print(f"✂️ Đã tách được {len(chunks)} đoạn văn bản (passages)")
+            
+            # Step 3: Index vào Qdrant
+            print("📊 Đang index vào Qdrant (Vector Search)...")
+            update_qdrant(chunks)
+            
+            # Step 4: Index vào HippoRAG
+            print("🧠 Đang index vào HippoRAG (Knowledge Graph)...")
+            update_hipporag(chunks)
+            
+            # Step 5: Update coverage
+            self.coverage_stats['indexed'] += 1
+            self.coverage_stats['coverage_rate'] = (
+                self.coverage_stats['indexed'] / self.coverage_stats['total_required'] * 100
+            )
+            
+            # Success message
+            return f"""✅ INDEX THÀNH CÔNG!
+
+📄 VĂN BẢN:
+   - Mã: {law_code}
+   - Tiêu đề: {title}
+   - Nguồn: {url}
+
+📊 KẾT QUẢ:
+   - Số đoạn văn: {len(chunks)} passages
+   - Đã index vào: Qdrant ✅ + HippoRAG ✅
+   
+📈 COVERAGE:
+   - Tổng đã index: {self.coverage_stats['indexed']}/{self.coverage_stats['total_required']}
+   - Tỷ lệ: {self.coverage_stats['coverage_rate']:.1f}%
+   - Mục tiêu: ≥95% {'✅' if self.coverage_stats['coverage_rate'] >= 95 else '⚠️'}
+
+⏰ SLA: Hoàn thành trong ≤7 ngày ✅"""
+            
+        except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+            print(f"❌ Index error: {error_detail}")
+            return f"❌ Lỗi khi index văn bản:\n{str(e)}"
+

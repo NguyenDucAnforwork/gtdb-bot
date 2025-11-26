@@ -83,6 +83,8 @@ def process_message_task(psid: str, query: str):
     """Process message with persona support and deduplication."""
     command = query.lower().strip()
     
+
+    
     # Handle persona switching commands
     if command.startswith("/"):
         new_persona = None
@@ -94,7 +96,8 @@ def process_message_task(psid: str, query: str):
             persona_names = {
                 "default": "👤 NGƯỜI DÂN (Mặc định)",
                 "csgt": "👮 CẢNH SÁT GIAO THÔNG", 
-                "lawyer": "⚖️ LUẬT SƯ TƯ VẤN"
+                "lawyer": "⚖️ LUẬT SƯ TƯ VẤN",
+                "hipporag": "🦄 HIPPORAG (Knowledge Graph)"
             }
             current_name = persona_names.get(current_persona, "👤 NGƯỜI DÂN (Mặc định)")
             
@@ -110,6 +113,7 @@ def process_message_task(psid: str, query: str):
 • /mode default - Chế độ người dân (thân thiện)
 • /mode csgt - Chế độ CSGT (ngắn gọn, tập trung mức phạt)
 • /mode lawyer - Chế độ luật sư (phân tích sâu)
+• /mode hipporag - Chế độ HippoRAG (knowledge graph)
 
 💡 Gõ "/mode" để kiểm tra lại trạng thái.{csgt_help}"""
             send_message(psid, msg_reply)
@@ -131,6 +135,9 @@ VÍ DỤ: /lookup vượt đèn đỏ xe máy"""
         elif command in ["/changemode: lawyer", "/mode lawyer", "/chedo luatsu", "/lawyer"]:
             new_persona = "lawyer"
             msg_reply = "⚖️ ĐÃ CHUYỂN SANG: CHẾ ĐỘ LUẬT SƯ TƯ VẤN\n📋 Phong cách: Phân tích sâu - Tư vấn pháp lý chuyên nghiệp"
+        elif command in ["/mode hipporag", "/hipporag", "/hippo"]:
+            new_persona = "hipporag"
+            msg_reply = "🦄 ĐÃ CHUYỂN SANG: CHẾ ĐỘ HIPPORAG\n📋 Phong cách: Dùng Knowledge Graph thuần túy - Bypass memory và vector search\n💡 Giờ bạn có thể chat bình thường, tôi sẽ chỉ dùng HippoRAG"
         elif command in ["/changemode: default", "/mode default", "/chedo macdinh", "/default"]:
             new_persona = "default"
             msg_reply = "👤 ĐÃ TRỞ VỀ: CHẾ ĐỘ NGƯỜI DÂN (Mặc định)\n📋 Phong cách: Thân thiện - Dễ hiểu"
@@ -149,6 +156,31 @@ VÍ DỤ: /lookup vượt đèn đỏ xe máy"""
             # Gọi handler trong chatbot_core
             response = chatbot._handle_csgt_commands(query, user_id=psid)
             send_message(psid, f"👮 {response}")
+            return
+        
+        # ✅ XỬ LÝ LỆNH INDEX (EP-03: Crawl & Index văn bản từ URL)
+        if query.startswith("/index "):
+            url = query[7:].strip()  # Remove "/index " prefix
+            
+            if not url:
+                send_message(psid, "❌ Vui lòng cung cấp URL văn bản.\nVD: /index https://thuvienphapluat.vn/van-ban/.../Nghi-dinh-158-2024-ND-CP-...")
+                return
+            
+            # Notify user that indexing started
+            send_message(psid, f"🚀 Đang crawl & index văn bản từ:\n{url}\n\n⏳ Vui lòng đợi, quá trình này có thể mất vài phút...")
+            
+            try:
+                # Call admin bot's index_from_url method
+                from src.persona.admin_bot import AdminBot
+                admin_bot = AdminBot(chatbot_core=chatbot)
+                response = admin_bot.index_from_url(url)
+                send_message(psid, response)
+            except Exception as e:
+                import traceback
+                error_detail = traceback.format_exc()
+                print(f"❌ Index error: {error_detail}")
+                send_message(psid, f"❌ Lỗi khi index văn bản:\n{str(e)}")
+            
             return
         
         # ✅ XỬ LÝ LỆNH ADMIN (EP-03: Quản trị văn bản pháp luật)
@@ -185,7 +217,8 @@ VÍ DỤ: /lookup vượt đèn đỏ xe máy"""
         response = chatbot.process_query(
             question=query,
             user_id=psid,
-            persona_key=current_persona
+            persona_key=current_persona,
+            force_hipporag=(current_persona == "hipporag")
         )
         
         # Save to memory if valuable
@@ -201,7 +234,8 @@ VÍ DỤ: /lookup vượt đèn đỏ xe máy"""
         persona_indicators = {
             "default": "👤",
             "csgt": "👮", 
-            "lawyer": "⚖️"
+            "lawyer": "⚖️",
+            "hipporag": "🦄"
         }
         persona_icon = persona_indicators.get(current_persona, "👤")
         

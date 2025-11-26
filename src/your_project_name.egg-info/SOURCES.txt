@@ -14,11 +14,15 @@ src/guardrails/__init__.py
 src/guardrails/content_filter.py
 src/guardrails/injection_detector.py
 src/guardrails/topic_classifier.py
+src/ingestion/crawler.py
+src/ingestion/updater.py
 src/memory/__init__.py
 src/memory/conversation_memory.py
 src/memory/memory_manager.py
 src/memory/session_manager.py
 src/persona/__init__.py
+src/persona/admin_bot.py
+src/persona/csgt_bot.py
 src/persona/persona_manager.py
 src/persona/prompts.py
 src/retrieval/__init__.py
