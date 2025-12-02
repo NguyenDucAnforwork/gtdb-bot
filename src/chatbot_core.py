@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from langchain_huggingface import HuggingFaceEmbeddings
 from operator import itemgetter
+from datetime import datetime 
 
 # Core imports
 from src.generation.openai_generator import get_llm
@@ -191,24 +192,63 @@ Trả lời ngắn gọn, phù hợp với vai trò."""
         
         return RunnableLambda(persona_greeting)
     
+    # src/chatbot_core.py
     def _build_simple_legal_chain(self):
+        current_date = datetime.now().strftime("%d/%m/%Y")
+        
         simple_legal_prompt = ChatPromptTemplate.from_template(
-            """Bạn là chuyên gia luật giao thông Việt Nam. Trả lời CHÍNH XÁC dựa trên thông tin có sẵn.
-            
-THÔNG TIN:
-{context}
-            
-CÂU HỎI: {question}
-            
-HÃY TRẢ LỜI:
-- Nếu thông tin đủ: Đưa ra câu trả lời CỤ THỂ và RÕ RÀNG (số tiền phạt, tốc độ, v.v.)
-- Nếu cần TÍNH TOÁN (như "tổng cộng"): Hãy TÍNH TOÁN và đưa ra kết quả cụ thể
-- Trích dẫn nguồn pháp lý nếu có (Nghị định, Điều, Khoản)
-- Giọng như cuộc trò chuyện tự nhiên, NGẮN GỌN
+            f"""Bạn là Luật sư AI Chính xác. Hôm nay là **{current_date}**.
 
-LƯU Ý: Nếu thông tin KHÔNG đủ, hãy nói thẳng "Tôi không tìm thấy thông tin cụ thể về {question} trong cơ sở dữ liệu."""
+            DỮ LIỆU TRA CỨU:
+            {{context}}
+
+            CÂU HỎI: {{question}}
+
+            QUY TẮC XỬ LÝ DỮ LIỆU (QUAN TRỌNG):
+            1. **Phân biệt loại xe:**
+            - Kiểm tra kỹ dữ liệu nói về "xe mô tô, xe gắn máy" hay "xe đạp máy".
+            - Nếu câu hỏi là "xe máy", HÃY BỎ QUA các điều khoản về xe đạp máy (thường là Điều 8, 9). TÌM điều khoản về "xe mô tô, xe gắn máy" (thường là Điều 6, 11, hoặc 12 trong NĐ 168).
+            2. **Định danh Luật:**
+            - "Luật 36" = **Luật Trật tự, an toàn giao thông đường bộ số 36/2024/QH15**. Hãy ghi đầy đủ tên này.
+
+            PHÂN LOẠI CÂU TRẢ LỜI:
+            - **Nếu hỏi về "Thẩm quyền/Được phạt":** Tìm thông tin về "thẩm quyền xử phạt" (thường ở Điều 39 đến Điều 44 Nghị định 168). Xác định rõ chức danh (Công an xã, CSGT, Chủ tịch...) và mức tiền tối đa.
+            - **Nếu hỏi về "Mức phạt hành vi/Bị phạt":** Tìm thông tin về hành vi vi phạm cụ thể.
+
+            CẤU TRÚC TRẢ LỜI:
+            1. **Căn cứ pháp lý:**
+            - Nghị định 168/2024/NĐ-CP (Nêu rõ Điều khoản cho XE MÁY).
+            - Luật Trật tự, an toàn giao thông đường bộ số 36/2024/QH15.
+            2. **Nội dung chính:**
+            - Trả lời thẳng vào câu hỏi (Mức phạt tối đa là bao nhiêu? / Mức phạt cho hành vi là bao nhiêu?).
+            3. **Thông tin bổ trợ quan trọng (Chọn 1 trong các ý sau tùy dữ liệu):**
+            - **TRƯỜNG HỢP 1 (Có Ngoại lệ):** Nếu dữ liệu có nói về độ tuổi, đối tượng miễn trừ (ví dụ: trẻ dưới 6 tuổi) -> BẮT BUỘC PHẢI NÊU.
+            - **TRƯỜNG HỢP 2 (Có Phạt bổ sung):** Nếu không có ngoại lệ, hãy nêu hình phạt bổ sung (Tước bằng, Tịch thu xe...).
+            - **TRƯỜNG HỢP 3 (Cảnh báo):** Nếu không có cả 1 và 2, đưa ra lời khuyên pháp lý.            
+            4. **Kết luận:** [Mức phạt cụ thể].
+
+            TRẢ LỜI:"""
         )
-        """Build chain with MEMORY as FIRST priority retriever and persona support."""
+
+        validation_prompt = ChatPromptTemplate.from_template(
+            """Bạn là Trọng tài đánh giá dữ liệu.
+                        
+            CÂU HỎI: {question}
+
+            DỮ LIỆU TÌM ĐƯỢC:
+            {context}
+
+            NHIỆM VỤ: Kiểm tra xem Dữ liệu có chứa thông tin cốt lõi để trả lời câu hỏi không.
+            - Chỉ cần tìm thấy con số, mức phạt, hoặc quy định chính.
+            - KHÔNG cần quan tâm đến định dạng, ngoại lệ hay chi tiết phụ.
+            - KHÔNG cần quan tâm đến ngôn ngữ (tiếng Anh hay Việt đều được).
+
+            TRẢ LỜI:
+            - Nếu có thông tin: Trả lời duy nhất từ "YES".
+            - Nếu hoàn toàn không liên quan: Trả lời duy nhất từ "NO"."""
+        )
+        # ...
+                
         def get_persona_prompt(persona_key: str) -> ChatPromptTemplate:
             # Use get_chat_prompt_template from prompts.py
             return get_chat_prompt_template(persona_key)
@@ -224,19 +264,20 @@ LƯU Ý: Nếu thông tin KHÔNG đủ, hãy nói thẳng "Tôi không tìm th�
             # Apply the prompt with context and question
             chain = prompt_template | self.llm | StrOutputParser()
             return chain.invoke({"context": context, "question": question})
-        
-#         def smart_retrieval_with_memory_first(inputs):
-#             """MEMORY FIRST retrieval strategy with strict validation."""
-#             question = inputs["question"]
-#             user_id = inputs.get("user_id", "")
+
+        def smart_retrieval_with_memory_first(inputs):
+            """MEMORY FIRST retrieval strategy with strict validation."""
+            question = inputs["question"]
+            user_id = inputs.get("user_id", "")
             
-#             # ✅ STEP 0: Try MEMORY FIRST (highest priority)
+            # ✅ STEP 0: Try MEMORY FIRST (highest priority)
 #             if user_id:
 #                 print("🧠 Checking if MEMORY can answer the question...")
                 
 #                 try:
 #                     memory_context = self.memory_manager.get_context(user_id, limit=5)
-                    
+#                     print(f"🧠 Retrieved memory context: {memory_context}")
+
 #                     if memory_context and memory_context.strip():
 #                         # Use memory manager's validator
 #                         is_sufficient = self.memory_manager.validate_memory_sufficiency(
@@ -281,120 +322,6 @@ LƯU Ý: Nếu thông tin KHÔNG đủ, hãy nói thẳng "Tôi không tìm th�
 #             else:
 #                 print("ℹ️ No user_id provided, skipping memory retrieval")
             
-#             # Helper function to check if response is insufficient
-#             def is_insufficient_response(response_text):
-#                 insufficient_indicators = [
-#                     "không thể xác định", "không có thông tin", "không tìm thấy",
-#                     "dựa trên tài liệu", "do không có thông tin trong tài liệu",
-#                     "tôi không thể trích dẫn", "không thể nêu rõ", "không có điều khoản", "rất tiếc",
-#                     "bạn cần tham khảo", "không đề cập", "thông tin bạn cung cấp không",
-#                     "các văn bản quy phạm pháp luật khác", "chỉ quy định chung"
-#                 ]
-#                 response_lower = response_text.lower()
-                
-#                 has_indicator = any(indicator in response_lower for indicator in insufficient_indicators)
-#                 has_specific_info = any(char.isdigit() for char in response_text)
-                
-#                 return has_indicator or not has_specific_info
-            
-#             # ✅ STEP 1: Try Vector retriever
-#             try:
-#                 query_transformer = create_query_transformer(self.vector_retriever, self.llm)
-#                 reranker = create_reranker(query_transformer)
-#                 vector_docs = reranker.invoke(question)
-                
-#                 if vector_docs and len(vector_docs) > 0:
-#                     print("📚 Trying vector retriever")
-#                     vector_context = []
-#                     for doc in vector_docs[:3]:
-#                         content = doc.page_content
-#                         metadata = doc.metadata
-#                         citation = format_qdrant_citation(metadata)
-#                         vector_context.append(f"{content}\n[Nguồn: {citation}]")
-                    
-#                     return "\n\n".join(vector_context)
-                
-#                 # check if vector_context is sufficient
-#                 vector_formatted = "\n\n".join(vector_context)
-#                 test_response = self.llm.invoke(
-#                     simple_legal_prompt.format(context=vector_formatted, question=question)
-#                 )
-#             except Exception as e:
-#                 print(f"❌ Vector retriever error: {e}")
-            
-#             return "Xin lỗi, không tìm thấy thông tin chính xác về câu hỏi này."
-        
-#         return (
-#             {
-#                 "question": itemgetter("question"),
-#                 "user_id": itemgetter("user_id"),
-#                 "context": RunnableLambda(smart_retrieval_with_memory_first)
-#             }
-#             | RunnableLambda(lambda inputs: {
-#                 "context": inputs["context"],
-#                 "question": inputs["question"],
-#                 "persona_key": inputs.get("persona_key", "default")
-#             })
-#             | RunnableLambda(persona_legal_response)
-#         )
-        
-        def smart_retrieval_with_memory_first(inputs):
-            """MEMORY FIRST retrieval strategy with strict validation."""
-            question = inputs["question"]
-            user_id = inputs.get("user_id", "")
-            
-            # ✅ STEP 0: Try MEMORY FIRST (highest priority)
-            if user_id:
-                print("🧠 Checking if MEMORY can answer the question...")
-                
-                try:
-                    memory_context = self.memory_manager.get_context(user_id, limit=5)
-                    print(f"🧠 Retrieved memory context: {memory_context}")
-
-                    if memory_context and memory_context.strip():
-                        # Use memory manager's validator
-                        is_sufficient = self.memory_manager.validate_memory_sufficiency(
-                            memory_context, question
-                        )
-                        
-                        if is_sufficient:
-                            print("✅ MEMORY has sufficient information! Using memory directly.")
-                            
-                            # Generate answer from memory using LLM
-                            memory_answer_prompt = ChatPromptTemplate.from_template(
-                                """Dựa vào NGỮ CẢNH CUỘC TRÒ CHUYỆN dưới đây, hãy trả lời câu hỏi một cách TỰ NHIÊN và CỤ THỂ.
-
-NGỮ CẢNH:
-{memory_context}
-
-CÂU HỎI: {question}
-
-YÊU CẦU:
-- Nếu cần TÍNH TOÁN (như "tổng cộng"), hãy TÍNH và đưa ra KẾT QUẢ CỤ THỂ
-- Trả lời NGẮN GỌN, giọng điệu TỰ NHIÊN như đang trò chuyện
-- KHÔNG cần trích dẫn nguồn vì đây là thông tin từ cuộc trò chuyện trước
-- CHỈ trả lời dựa trên thông tin có trong ngữ cảnh
-
-TRẢ LỜI:"""
-                            )
-                            
-                            answer_chain = memory_answer_prompt | self.llm | StrOutputParser()
-                            memory_answer = answer_chain.invoke({
-                                "memory_context": memory_context,
-                                "question": question
-                            })
-                            
-                            return f"[Từ cuộc trò chuyện trước]\n{memory_answer}"
-                        else:
-                            print("⚠️ MEMORY validation failed - information insufficient or irrelevant")
-                    else:
-                        print("ℹ️ No memory context available")
-                        
-                except Exception as e:
-                    print(f"❌ Memory retrieval error: {e}")
-            else:
-                print("ℹ️ No user_id provided, skipping memory retrieval")
-            
             # Helper function to check if response is insufficient
             def is_insufficient_response(response_text):
                 insufficient_indicators = [
@@ -420,25 +347,48 @@ TRẢ LỜI:"""
                 if vector_docs and len(vector_docs) > 0:
                     print("📚 Trying vector retriever")
                     vector_context = []
-                    for doc in vector_docs[:3]:
+                    for doc in vector_docs[:10]: # Lấy nhiều doc hơn chút
                         content = doc.page_content
                         metadata = doc.metadata
-                        citation = format_qdrant_citation(metadata)
-                        vector_context.append(f"{content}\n[Nguồn: {citation}]")
+                        citation = format_qdrant_citation(metadata) # Hàm này trả về "Điều X, Khoản Y..."
+                        
+                        # Đưa citation lên ĐẦU để đập vào mắt LLM trước
+                        formatted_doc = f"""
+                        --- TÀI LIỆU THAM KHẢO ---
+                        NGUỒN CHÍNH THỨC (Ưu tiên dùng): {citation}
+                        NỘI DUNG:
+                        {content}
+                        --------------------------"""
+                        vector_context.append(formatted_doc)
                     
                     vector_formatted = "\n\n".join(vector_context)
                     
-                    test_response = self.llm.invoke(
-                        simple_legal_prompt.format(context=vector_formatted, question=question)
-                    )
+                    # test_response = self.llm.invoke(
+                    #     simple_legal_prompt.format(context=vector_formatted, question=question)
+                    # )
                     
-                    response_text = test_response.content if hasattr(test_response, 'content') else str(test_response)
+                    # response_text = test_response.content if hasattr(test_response, 'content') else str(test_response)
                     
-                    if not is_insufficient_response(response_text):
-                        print("✅ Vector retriever provided sufficient answer")
+                    # if not is_insufficient_response(response_text):
+                    #     print("✅ Vector retriever provided sufficient answer")
+                    #     return vector_formatted
+                    # else:
+                    #     print("⚠️ Vector answer insufficient, trying web search")
+
+                    validation_chain = validation_prompt | self.llm | StrOutputParser()
+                    check_result = validation_chain.invoke({
+                        "context": vector_formatted,
+                        "question": question
+                    })
+                    
+                    print(f"🧐 Validator verdict: {check_result.strip()}")
+                    
+                    if "YES" in check_result.strip().upper():
+                        print("✅ Vector check PASSED")
                         return vector_formatted
                     else:
-                        print("⚠️ Vector answer insufficient, trying web search")
+                        print("⚠️ Vector check FAILED (Validator said NO)")
+
             except Exception as e:
                 print(f"❌ Vector retriever error: {e}")
             

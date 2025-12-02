@@ -22,8 +22,8 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # --- Reranker ---
-RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2" # Example for Cohere
-TOP_N_RERANK = 3
+RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3" # Example for Cohere
+TOP_N_RERANK = 10
 
 # --- Web Search ---
 TAVILY_MAX_RESULTS = 2

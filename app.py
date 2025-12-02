@@ -1,5 +1,5 @@
 # app.py
-import os, requests, time
+import os, requests, time, textwrap
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
 from src.chatbot_core import ChatbotCore
@@ -44,8 +44,21 @@ def send_message(psid, text):
     params = {"access_token": PAGE_TOKEN}
     payload = {"recipient": {"id": psid}, "message": {"text": text}}
     r = requests.post(url, params=params, json=payload, timeout=10)
-    print(r.text)
     r.raise_for_status()
+
+def send_long_message(psid, text, max_len=1900):
+    chunks = textwrap.wrap(text, width=max_len, break_long_words=True, replace_whitespace=False, drop_whitespace=False)
+    
+    if not chunks: # Trường hợp text rỗng hoặc lỗi
+        chunks = [text]
+        
+    for i, chunk in enumerate(chunks):
+        try:
+            send_message(psid, chunk)
+            # Nghỉ xíu giữa các tin để tránh bị FB chặn spam hoặc tin đến sai thứ tự
+            time.sleep(0.3) 
+        except Exception as e:
+            print(f"❌ Lỗi gửi part {i+1}/{len(chunks)}: {e}")
 
 # Message deduplication cache
 processed_messages = set()
@@ -82,8 +95,6 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
 def process_message_task(psid: str, query: str):
     """Process message with persona support and deduplication."""
     command = query.lower().strip()
-    
-
     
     # Handle persona switching commands
     if command.startswith("/"):
@@ -238,11 +249,9 @@ VÍ DỤ: /lookup vượt đèn đỏ xe máy"""
             "hipporag": "🦄"
         }
         persona_icon = persona_indicators.get(current_persona, "👤")
+        full_response = f"{persona_icon} {response}"
         
-        # Send response (truncate if too long)
-        reply = response[:10000] if len(response) > 10000 else response
-        final_reply = f"{persona_icon} {reply}"
-        send_message(psid, final_reply)
+        send_long_message(psid, full_response) # <--- Dùng hàm mới này
         
     except Exception as e:
         import traceback

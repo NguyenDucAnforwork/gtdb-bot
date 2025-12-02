@@ -41,8 +41,12 @@ def _call_llm_to_queries(llm: Any, user_query: str, k: int, prompt_template: Opt
     Kỳ vọng LLM trả về các dòng (mỗi dòng 1 truy vấn) hoặc dạng bullet/numbered list.
     """
     prompt = (prompt_template or
-              "Bạn là công cụ tạo truy vấn tìm kiếm. Hãy viết {k} biến thể truy vấn khác góc nhìn, "
-              "ngắn gọn, mỗi truy vấn trên một dòng, không giải thích.\n\nTruy vấn gốc: {q}\n")
+              "Bạn là chuyên gia phân tích câu hỏi pháp lý. Hãy tách câu hỏi sau thành {k} truy vấn tìm kiếm để thu thập đủ thông tin:\n"
+              "1. Truy vấn về hành vi vi phạm.\n"
+              "2. Truy vấn về đối tượng/độ tuổi/điều kiện đặc biệt (nếu có).\n"
+              "3. Truy vấn về mức phạt cụ thể.\n\n"
+              "Câu hỏi gốc: {q}\n"
+              "Chỉ trả lời danh sách truy vấn, mỗi câu một dòng.")
     p = prompt.format(k=k, q=user_query)
 
     # Gọi theo các “hình” API phổ biến

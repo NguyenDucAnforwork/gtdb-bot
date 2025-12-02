@@ -6,7 +6,6 @@ from config import settings
 
 def create_reranker(base_retriever):
     # chọn model cross-encoder mà bạn chắc có trên HuggingFace
-    # ví dụ một cross-encoder đa ngôn ngữ như "cross-encoder/ms-marco-MiniLM-L-6-v2"
     # hoặc nếu bạn tìm được cross-encoder tiếng Việt
     cross = HuggingFaceCrossEncoder(
         model_name=settings.RERANKER_MODEL_NAME,

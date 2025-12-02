@@ -189,11 +189,11 @@ class RecursiveQdrantRetriever(BaseRetriever):
     # Declare Pydantic fields
     embeddings: Any = Field(description="Embedding model")  
     collection_name: str = Field(description="Qdrant collection name")
-    similarity_threshold: float = Field(default=0.4, description="Similarity threshold")
+    similarity_threshold: float = Field(default=0.28, description="Similarity threshold")
     max_depth: int = Field(default=2, description="Maximum recursion depth")
     client: Any = Field(default=None, description="Qdrant client")
     
-    def __init__(self, embeddings, max_depth=2, similarity_threshold=0.4, **kwargs):
+    def __init__(self, embeddings, max_depth=2, similarity_threshold=0.28, **kwargs):
         # Initialize with proper Pydantic field assignment
         super().__init__(
             embeddings=embeddings,
@@ -488,7 +488,7 @@ def create_vector_only_retriever(embeddings):
     retriever = RecursiveQdrantRetriever(
         embeddings=embeddings,
         max_depth=2,
-        similarity_threshold=0.4
+        similarity_threshold=0.28
     )
     
     print("✅ Vector-Only Retriever Created")
