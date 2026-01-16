@@ -2,6 +2,7 @@
 """
 HippoRAG Knowledge Graph Retriever
 Sử dụng HippoRAG API để retrieve documents với knowledge graph
+Customized cho Vietnamese Traffic Law
 """
 
 import os
@@ -13,12 +14,15 @@ from langchain.schema import Document
 from pydantic import Field
 import re
 
-# Add notebooks directory to path để import HippoRAG
-notebooks_path = os.path.join(os.path.dirname(__file__), '..', '..', 'notebooks')
-sys.path.insert(0, notebooks_path)
+# Add HippoRAG directory to path
+hipporag_path = os.path.join(os.path.dirname(__file__), '..', '..', 'HippoRAG', 'src')
+if hipporag_path not in sys.path:
+    sys.path.insert(0, hipporag_path)
 
 from hipporag import HippoRAG
+from hipporag.utils.config_utils import BaseConfig
 from config import settings
+from src.retrieval.vietnamese_law_prompts import get_vietnamese_law_prompts
 
 # Mapping các văn bản có lỗi font encoding
 DOCUMENT_MAPPING = {
@@ -30,14 +34,53 @@ DOCUMENT_MAPPING = {
     "Lu t 36-2024-QH15": "Luật 36/2024/QH15",
 }
 
+def _override_hipporag_prompts():
+    """
+    Override HippoRAG default prompts với Vietnamese Traffic Law prompts
+    PHẢI GỌI TRƯỚC khi khởi tạo HippoRAG (như trong notebook section 5)
+    """
+    try:
+        # Import prompt templates từ HippoRAG
+        from hipporag.prompts.templates import ner, triple_extraction, rag_qa_musique
+        
+        # Get Vietnamese law prompts
+        vn_prompts = get_vietnamese_law_prompts()
+        
+        # Override NER prompt (giống y hệt notebook)
+        ner.ner_system = vn_prompts['ner']['system']
+        ner.one_shot_ner_paragraph = vn_prompts['ner']['example_input']
+        ner.one_shot_ner_output = vn_prompts['ner']['example_output']
+        ner.prompt_template = vn_prompts['ner']['prompt_template']
+        
+        # Override Triple Extraction prompt
+        triple_extraction.ner_conditioned_re_system = vn_prompts['triple_extraction']['system']
+        triple_extraction.ner_conditioned_re_output = vn_prompts['triple_extraction']['example_output']
+        
+        # Override QA prompt
+        rag_qa_musique.rag_qa_system = vn_prompts['qa']['system']
+        
+        print("✅ Prompts overridden successfully:")
+        print("   - NER: Vietnamese Traffic Law specific")
+        print("   - Triple extraction: Optimized for law relationships")
+        print("   - QA: Legal citation enforced")
+        
+    except Exception as e:
+        print(f"⚠️ Warning: Could not override prompts: {e}")
+        print("   Using default HippoRAG prompts instead")
+
+
 class HippoRAGRetriever(BaseRetriever):
     """
     HippoRAG-based retriever sử dụng knowledge graph
+    Customized cho Vietnamese Traffic Law với:
+    - Custom NER prompts cho entities trong luật giao thông
+    - Custom Triple Extraction cho relationships trong điều khoản
+    - Custom QA prompts với citation enforcement
     
-    Flow:
-    1. Initialize HippoRAG với OpenAI GPT-4o-mini
-    2. Use hipporag.rag_qa(queries) để retrieve + answer
-    3. Extract citations từ QuerySolution results
+    Flow (giống y hệt notebook):
+    1. Override prompts TRƯỚC khi init HippoRAG
+    2. Initialize HippoRAG với custom config
+    3. Use hipporag.retrieve() để retrieve documents
     4. Format thành LangChain Documents
     """
     
@@ -45,7 +88,7 @@ class HippoRAGRetriever(BaseRetriever):
     max_docs_per_query: int = Field(default=3, description="Max documents per query")
     
     def __init__(self, max_docs_per_query: int = 3, **kwargs):
-        """Initialize HippoRAG retriever"""
+        """Initialize HippoRAG retriever với Vietnamese Traffic Law customization"""
         
         # Load OpenAI API key từ settings hoặc environment
         openai_api_key = getattr(settings, 'OPENAI_API_KEY', None) or os.getenv('OPENAI_API_KEY')
@@ -55,15 +98,85 @@ class HippoRAGRetriever(BaseRetriever):
         
         os.environ["OPENAI_API_KEY"] = openai_api_key
         
-        # Initialize HippoRAG
+        # ⚠️ QUAN TRỌNG: Override prompts TRƯỚC KHI tạo config (như notebook)
+        print("📝 Overriding prompts with Vietnamese Traffic Law templates...")
+        _override_hipporag_prompts()
+        
+        # Debug: Print path being used
+        print(f"📁 HIPPORAG_SAVE_DIR: {settings.HIPPORAG_SAVE_DIR}")
+        print(f"   Path exists: {os.path.exists(settings.HIPPORAG_SAVE_DIR)}")
+        if os.path.exists(settings.HIPPORAG_SAVE_DIR):
+            print(f"   Contents: {os.listdir(settings.HIPPORAG_SAVE_DIR)}")
+        
+        # Create custom config cho Vietnamese Traffic Law (từ notebook section 3)
+        print("⚙️ Creating custom HippoRAG config for Vietnamese Traffic Law...")
+        config = BaseConfig(
+            # LLM config
+            llm_name=settings.HIPPORAG_LLM_NAME,
+            max_new_tokens=settings.HIPPORAG_MAX_NEW_TOKENS,
+            temperature=settings.HIPPORAG_TEMPERATURE,
+
+            # Embedding config - Vietnamese model
+            embedding_model_name=settings.HIPPORAG_EMBEDDING_MODEL,
+            embedding_batch_size=settings.HIPPORAG_EMBEDDING_BATCH_SIZE,
+            embedding_return_as_normalized=settings.HIPPORAG_EMBEDDING_RETURN_NORMALIZED,
+            embedding_max_seq_len=settings.HIPPORAG_EMBEDDING_MAX_SEQ_LEN,
+
+            # Preprocessing config
+            preprocess_chunk_max_token_size=settings.HIPPORAG_CHUNK_MAX_TOKEN_SIZE,
+            preprocess_chunk_overlap_token_size=settings.HIPPORAG_CHUNK_OVERLAP_TOKEN_SIZE,
+            preprocess_chunk_func=settings.HIPPORAG_CHUNK_FUNC,
+
+            # Graph construction config
+            synonymy_edge_topk=settings.HIPPORAG_SYNONYMY_EDGE_TOPK,
+            synonymy_edge_sim_threshold=settings.HIPPORAG_SYNONYMY_EDGE_SIM_THRESHOLD,
+            is_directed_graph=settings.HIPPORAG_IS_DIRECTED_GRAPH,
+
+            # Retrieval config
+            linking_top_k=settings.HIPPORAG_LINKING_TOP_K,
+            retrieval_top_k=settings.HIPPORAG_RETRIEVAL_TOP_K,
+            passage_node_weight=settings.HIPPORAG_PASSAGE_NODE_WEIGHT,
+            damping=settings.HIPPORAG_DAMPING,
+
+            # QA config
+            max_qa_steps=settings.HIPPORAG_MAX_QA_STEPS,
+            qa_top_k=settings.HIPPORAG_QA_TOP_K,
+
+            # Storage config - dùng save_dir từ settings
+            save_dir=settings.HIPPORAG_SAVE_DIR,
+            save_openie=settings.HIPPORAG_SAVE_OPENIE,
+            force_index_from_scratch=settings.HIPPORAG_FORCE_INDEX_FROM_SCRATCH,
+        )
+        
+        print("✅ Custom config created:")
+        print(f"   - LLM: {config.llm_name}")
+        print(f"   - Embedding: {config.embedding_model_name}")
+        print(f"   - Save dir: {config.save_dir}")
+        print(f"   - Chunk size: {config.preprocess_chunk_max_token_size} tokens")
+        print(f"   - Retrieval top-k: {config.retrieval_top_k}")
+        
+        # Initialize HippoRAG với custom config
         print("🧠 Initializing HippoRAG Knowledge Graph...")
         hipporag_instance = HippoRAG(
-            save_dir="outputs",
-            llm_model_name="gpt-4o-mini",
-            llm_base_url="https://api.openai.com/v1",
-            embedding_model_name="text-embedding-3-small",
-            embedding_base_url="https://api.openai.com/v1"
+            global_config=config,
+            save_dir=settings.HIPPORAG_SAVE_DIR,
+            llm_model_name=config.llm_name,
+            embedding_model_name=config.embedding_model_name
         )
+
+        if hasattr(hipporag_instance, 'graph') and hipporag_instance.graph is not None:
+            print("Knowledge Graph Statistics:")
+            print(f"  - Total nodes: {hipporag_instance.graph.vcount()}")
+            print(f"  - Total edges: {hipporag_instance.graph.ecount()}")
+            print(f"  - Average degree: {2 * hipporag_instance.graph.ecount() / hipporag_instance.graph.vcount():.2f}")
+            # Kiểm tra một số node mẫu
+            if hipporag_instance.graph.vcount() > 0:
+                print("\nSample nodes:")
+                for i in range(min(5, hipporag_instance.graph.vcount())):
+                    node_name = hipporag_instance.graph.vs[i]['name'] if 'name' in hipporag_instance.graph.vs.attributes() else f"Node {i}"
+                    print(f"  - {node_name}")
+        else:
+            print("Graph not yet initialized. Run indexing first.")
         
         super().__init__(
             hipporag=hipporag_instance,
@@ -71,7 +184,7 @@ class HippoRAGRetriever(BaseRetriever):
             **kwargs
         )
         
-        print("✅ HippoRAG Retriever initialized successfully")
+        print("✅ HippoRAG Retriever initialized successfully with Vietnamese Law customization")
     
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
