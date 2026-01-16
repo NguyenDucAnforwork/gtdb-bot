@@ -37,8 +37,9 @@ async def lifespan(app: FastAPI):
     global chatbot
     try:
         logger.info("🚀 Initializing RAG Chatbot...")
-        chatbot = ChatbotCore()
-        logger.info("✅ Chatbot initialized successfully")
+        # Initialize with use_memory=False (tạm thời tắt memory features)
+        chatbot = ChatbotCore(use_memory=False)
+        logger.info("✅ Chatbot initialized successfully (memory DISABLED)")
         yield
     except Exception as e:
         logger.error(f"❌ Failed to initialize chatbot: {e}")
