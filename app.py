@@ -43,7 +43,10 @@ config = {
 
 print("🚀 Initializing Memory with Qdrant Cloud config...")
 memory = Memory.from_config(config)
-chatbot = ChatbotCore()
+
+# Initialize chatbot với use_memory=False (tạm thời tắt memory features)
+print("🤖 Initializing Chatbot Core with memory DISABLED...")
+chatbot = ChatbotCore(use_memory=False)
 app = FastAPI()
 
 @app.get("/webhook")
@@ -125,7 +128,7 @@ async def webhook(request: Request):
                 response = await process_user_query(psid, query)
                 
                 # Send response (truncate if too long)
-                reply = response[:1000] if len(response) > 1000 else response
+                reply = response[:10000] if len(response) > 10000 else response
                 send_message(psid, reply)
     
     return {"status": "ok"}
@@ -147,16 +150,10 @@ async def process_user_query(user_id: str, query: str) -> str:
             for i, mem in enumerate(memories[:3], 1):  # Show first 3
                 print(f"   {i}. {mem[:80]}...")        
         
-        # Step 2: Build contextual query if we have history
+        # Step 2: Just use the original query directly
+        # NOTE: Memory context was polluting the query and causing HippoRAG to retrieve wrong docs
+        # chatbot.process_query now handles everything with HippoRAG chain (no classification)
         contextual_query = query
-        if memories:
-            # Use last 5 memories as context
-            contextual_query = f"""NGỮ CẢNH CUỘC TRÒ CHUYỆN:
-{chr(10).join([f'- {mem}' for mem in memories[:-5]])}
-
-CÂU HỎI: {query}
-
-Hãy trả lời dựa trên ngữ cảnh trên."""
         
         # Step 3: Process with chatbot
         response = chatbot.process_query(contextual_query, memories, user_id=user_id)
