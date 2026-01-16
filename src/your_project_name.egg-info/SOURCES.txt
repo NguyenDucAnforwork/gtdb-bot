@@ -26,6 +26,7 @@ src/retrieval/multiquery_light.py
 src/retrieval/query_transformer.py
 src/retrieval/reranker.py
 src/retrieval/simple_merger.py
+src/retrieval/vietnamese_law_prompts.py
 src/retrieval/web_search.py
 src/routing/__init__.py
 src/routing/query_router.py

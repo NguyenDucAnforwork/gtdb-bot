@@ -15,6 +15,7 @@ Requires-Dist: astor
 Requires-Dist: attrs
 Requires-Dist: blake3
 Requires-Dist: blinker
+Requires-Dist: boto3>=1.42.29
 Requires-Dist: cachetools
 Requires-Dist: certifi
 Requires-Dist: charset-normalizer
@@ -42,6 +43,7 @@ Requires-Dist: flaml>=2.3.6
 Requires-Dist: flatbuffers
 Requires-Dist: frozenlist
 Requires-Dist: fsspec
+Requires-Dist: gdown>=5.2.1
 Requires-Dist: gguf
 Requires-Dist: gitdb
 Requires-Dist: GitPython
@@ -92,6 +94,7 @@ Requires-Dist: langgraph-prebuilt
 Requires-Dist: langgraph-sdk
 Requires-Dist: langsmith
 Requires-Dist: lark
+Requires-Dist: litellm>=1.53.3
 Requires-Dist: lm-format-enforcer
 Requires-Dist: markdown-it-py
 Requires-Dist: MarkupSafe
