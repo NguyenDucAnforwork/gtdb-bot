@@ -70,7 +70,33 @@ This project uses `uv` for package management. It's a fast, modern Python packag
     Install all required packages from `pyproject.toml`.
     ```bash
     uv pip install -e .
+    gdown https://drive.google.com/file/d/1b-4Pj59xUhh0zpDa4qiGOykyAM1RHXmv/view?usp=sharing
     ```
+
+4.5. clone hipporag
+customize the code in the file src/misc_utils.py
+```
+def text_processing(text):
+    if isinstance(text, list):
+        return [text_processing(t) for t in text]
+    if not isinstance(text, str):
+        text = str(text)
+    return re.sub(r"[^\w\s\u00C0-\u024F]", " ", text.lower()).strip()
+```
+
+4.7. setup ngrok
+```
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
+  && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
+  | sudo tee /etc/apt/sources.list.d/ngrok.list \
+  && sudo apt update \
+  && sudo apt install ngrok
+
+ngrok config add-authtoken <token>
+
+ngrok http 8000
+```
 
 5.  **Environment Variables**:
     Create a `.env` file in the root directory (you can copy `.env.example`) and add the necessary API keys:

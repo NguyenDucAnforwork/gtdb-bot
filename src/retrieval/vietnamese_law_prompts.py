@@ -38,6 +38,20 @@ VIETNAMESE_LAW_NER_EXAMPLE_OUTPUT = """{
     ]
 }"""
 
+VIETNAMESE_LAW_TRIPLE_EXAMPLE_OUTPUT = """{
+    "triples": [
+        ["Điều 5", "quy định về", "xe mô tô"],
+        ["Điều 5", "quy định về", "xe gắn máy"],
+        ["không có Giấy phép lái xe", "bị phạt", "800.000 đồng"],
+        ["không có Giấy phép lái xe", "bị phạt", "1.000.000 đồng"],
+        ["vượt đèn đỏ", "bị phạt", "4.000.000 đồng"],
+        ["vượt đèn đỏ", "bị phạt", "6.000.000 đồng"],
+        ["xe mô tô", "vi phạm", "vượt đèn đỏ"],
+        ["Giấy phép lái xe", "yêu cầu cho", "xe mô tô"],
+        ["Giấy phép lái xe", "yêu cầu cho", "xe gắn máy"]
+    ]
+}"""
+
 # Prompt template cho NER
 ner_prompt_template = [
     {"role": "system", "content": VIETNAMESE_LAW_NER_SYSTEM},
